@@ -14,6 +14,16 @@ schemes:
 paths:
   /auth:
     $ref: docs/auth.yml
+  /es-auth:
+    $ref: docs/es-auth.yml
+  /es-school-form:
+    $ref: docs/es-school-form.yml
+  /es-school:
+    $ref: docs/es-school.yml
+  /es-subject:
+    $ref: docs/es-subject.yml
+  /es-user:
+    $ref: docs/es-user.yml
   /hbs-samples:
     $ref: docs/hbs-samples.yml
   /hris:
