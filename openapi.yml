@@ -38,6 +38,10 @@ paths:
     $ref: docs/otp.yml
   /admin/policy-authority:
     $ref: docs/admin/policy-authority.yml
+  /projects:
+    $ref: docs/projects.yml
+  /purchasing:
+    $ref: docs/purchasing.yml
   /registry:
     $ref: docs/registry.yml
   /sms-attachment:
