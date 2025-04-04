@@ -70,6 +70,8 @@ paths:
     $ref: docs/sms-sds.yml
   /admin/subject-authority:
     $ref: docs/admin/subject-authority.yml
+  /supplier:
+    $ref: docs/supplier.yml
   /user-uploads:
     $ref: docs/user-uploads.yml
   /user:

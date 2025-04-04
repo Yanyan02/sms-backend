@@ -17,6 +17,7 @@ export default REST({
       no: Joi.string(),
       project: object_id,
       type: Joi.string(),
+      supplier: object_id,
       items: Joi.array().items(
         Joi.object({
           description: Joi.string(),
@@ -67,7 +68,7 @@ export default REST({
   },
   controllers: {
    async create_purchase_request(data) {
-  console.log("Received Data:", data);
+ 
 
   // Fetch project details
   const project = await this.db?.collection("projects").findOne({ _id: new ObjectId(data.project) });
@@ -75,14 +76,12 @@ export default REST({
   if (!project) {
     throw new Error("Invalid project ID. Project not found.");
   }
-
-  // Get and increment the purchase request number
   const sequence = (project.purchase_request_no || 0) + 1;
 
   // Generate PR number
   const currentYear = new Date().getFullYear();
-  const controlNumber = project.control_number || "XX"; // Default if not available
-  const formCode = "PR"; // Static form code
+  const controlNumber = project.control_number || "XX"; 
+  const formCode = "PR"; 
   const prNumber = `${controlNumber}-${formCode}-${currentYear}-${String(sequence).padStart(4, "0")}`;
 
 
@@ -91,11 +90,12 @@ export default REST({
     { $set: { purchase_request_no: sequence } }
   );
 
-  // Add PR number to the request
+  
   data.no = prNumber;
   data.date_requested = new Date();
   data.project = new ObjectId(data.project);
-  // Insert purchase request
+  data.supplier = new ObjectId(data.supplier);
+
   const result = await this.db?.collection(collection).insertOne(data);
 
   if (!result.insertedId) {
@@ -104,9 +104,7 @@ export default REST({
 
   return { message: "Successfully created purchase request", prNumber };
 },
-async get_purchase_request(filter: any) {
-  console.log("Filyerrrr", filter);
-  
+async get_purchase_request(filter: any) {  
 const { project, type } = filter;
  let query = {};
  if(project && type){
@@ -125,7 +123,6 @@ const { project, type } = filter;
     type : type
   }
  }
- console.log('QUERRRTTTTTTTTTTTTT', query);
  
  return this.db?.collection("purchase-requests").aggregate([
     {
@@ -158,7 +155,9 @@ async get_purchase_request_id(id: any) {
 
  return this.db?.collection("purchase-requests").aggregate([
     {
-  $match: new ObjectId(id)
+  $match: {
+    _id : new ObjectId(id)
+  }
     },
      {
       $lookup: {
