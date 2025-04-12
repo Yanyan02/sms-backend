@@ -22,9 +22,22 @@ export default REST({
      email : Joi.string(),
      contact_person: Joi.string(),
      contact_number:  Joi.string(),
+     terms: Joi.string(),
+     status:Joi.string(),
+     accredited: Joi.number(),
      products : Joi.array().optional(),
      company_profile :  Joi.array().optional(),
      catalog :  Joi.array().optional(),
+
+    },
+        "submit-evaluation": {
+      date:  Joi.string(),
+      supplier: Joi.string(),
+      from :Joi.string(),
+      to: Joi.string(),
+      recommendations: Joi.string().optional(),
+      criteria: Joi.array()
+
 
     },
     "get-supplier": {
@@ -36,11 +49,21 @@ export default REST({
       _id: object_id,
       title: Joi.string()
     },
+     "get-supplier-evaluations": {
+      supplier: Joi.string().allow(""),
+      type: Joi.string().allow(""),
+
+    },
   },
   handlers: {
     "POST": {
       "create-supplier"(req, res) {
         this.create_supplier(req.body)
+          .then((data) => res.json({ data }))
+          .catch((error) => res.status(500).json({ error }));
+      },
+      "submit-evaluation"(req, res) {
+        this.submit_evaluation(req.body)
           .then((data) => res.json({ data }))
           .catch((error) => res.status(500).json({ error }));
       },
@@ -51,6 +74,9 @@ export default REST({
       },
             "get-supplier-id"(req, res) {
         this.get_supplier_id(req.query).then((data) => res.json({ data })).catch((error) => res.status(400).json({ error }))
+      },
+       "get-supplier-evaluations"(req, res) {
+        this.get_supplier_evaluations(req.query).then((data) => res.json({ data })).catch((error) => res.status(400).json({ error }))
       },
     },
     "PUT": {
@@ -66,11 +92,81 @@ export default REST({
      const result = await this.db?.collection(collection).insertOne(data);
       if (!result.insertedId) return Promise.reject("Could not create project");
       return Promise.resolve("Successfully created project")
+},
+async submit_evaluation(data) {
+  console.log("DATAAAAAAAAAAAAAA", data);
+  
+    data.supplier = new ObjectId(data.supplier)
+
+     data.date = new Date(data.date)
+     const result = await this.db?.collection('supplier-evaluations').insertOne(data);
+      if (!result.insertedId) return Promise.reject("Could not create project");
+      return Promise.resolve("Successfully created project")
 
     
 },
 async get_supplier() {
 return this.db?.collection("suppliers").find({}).toArray();
+
+},
+async get_supplier_evaluations(filter: any) {
+  console.log("Filterrrrrr", filter);
+
+
+  const { supplier, type } = filter;
+  const query: any = {};
+
+  if (supplier) {
+    query.supplier = new ObjectId(supplier);
+  }
+
+  if (type) {
+    query.type = type;
+  }
+
+  console.log("Querryyyy", query);
+  
+return this.db?.collection("supplier-evaluations").aggregate([
+  //  {
+  // $match: query
+  //   },
+    {
+    $lookup: {
+      from: "suppliers",
+      localField: "supplier",
+      foreignField: "_id",
+      as: "supplier"
+    }
+  },
+  {
+    $unwind: {
+      path: "$supplier",
+      preserveNullAndEmptyArrays: false
+    }
+  },
+  {
+    $addFields: {
+      totalRating: {
+        $sum: "$criteria.rating"
+      },
+      result: {
+        $gte: [{ $sum: "$criteria.rating" }, 15] 
+      }
+    }
+  },
+  {
+    $project: {
+      name: "$supplier.name",
+      nature: "$supplier.nature",
+      date: 1,
+      from: 1,
+      to: 1,
+      criteria: 1,
+      recommendations: 1,
+      totalRating: 1,
+      result: 1
+    }
+  }]).toArray();
 
 },
 async get_supplier_id(id: any) {

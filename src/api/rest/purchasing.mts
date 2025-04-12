@@ -32,6 +32,7 @@ export default REST({
     "get-purchase-request": {
    project: Joi.string().allow(""),
     type: Joi.string().allow(""),
+    year:  Joi.string().allow(""),
     },
     "get-purchase-request-id": {
     id: object_id
@@ -79,11 +80,11 @@ export default REST({
   const sequence = (project.purchase_request_no || 0) + 1;
 
   // Generate PR number
-  const currentYear = new Date().getFullYear();
-  const controlNumber = project.control_number || "XX"; 
-  const formCode = "PR"; 
-  const prNumber = `${controlNumber}-${formCode}-${currentYear}-${String(sequence).padStart(4, "0")}`;
-
+  // const currentYear = new Date().getFullYear();
+  // const controlNumber = project.control_number || "XX"; 
+  // const formCode = "PR"; 
+  // const prNumber = `${controlNumber}-${formCode}-${currentYear}-${String(sequence).padStart(4, "0")}`;
+  const prNumber = `${String(sequence).padStart(4, "0")}`;
 
   await this.db?.collection("projects").updateOne(
     { _id: new ObjectId(data.project) },
@@ -92,7 +93,7 @@ export default REST({
 
   
   data.no = prNumber;
-  data.date_requested = new Date();
+  data.date_requested = new Date(data.date_requested);
   data.project = new ObjectId(data.project);
   data.supplier = new ObjectId(data.supplier);
 
@@ -105,52 +106,158 @@ export default REST({
   return { message: "Successfully created purchase request", prNumber };
 },
 async get_purchase_request(filter: any) {  
-const { project, type } = filter;
- let query = {};
- if(project && type){
-  query = {
-    project : new ObjectId(project),
-    type : type
-  }
- }
-  if(project){
-  query = {
-    project : new ObjectId(project),
-  }
- }
-  if(type){
-  query = {
-    type : type
-  }
- }
- 
- return this.db?.collection("purchase-requests").aggregate([
-    {
-  $match: query
-    },
-     {
-      $lookup: {
-        from: "projects",
-        localField: "project",
-        foreignField: "_id",
-        as: "project",
-      },
-    },
-    { $unwind: { path: "$project", preserveNullAndEmptyArrays: true } }, 
-    {
-      $project: {
-        items: 1,
-        no: 1,
-        project: "$project.name",
-        address: "$project.address",
-        date_requested: 1,
-        requested_by: 1,
-        type : 1
-      },
-    }
-  ]).toArray();
+  console.log("FIlerrrrrrrrrr", filter);
 
+  const { project, type, year } = filter;
+  const query: any = {};
+
+  if (project) {
+    query.project = new ObjectId(project);
+  }
+
+  // if (type) {
+  //   query.type = type;
+  // }
+
+  console.log("Querryyyy", year);
+
+  if (year) {
+    const [yearPart, monthPart] = year.split('-'); 
+
+    const startDate = new Date(`${yearPart}-${monthPart}-01T00:00:00Z`);
+    const endDate = new Date(startDate);
+    endDate.setMonth(endDate.getMonth() + 1); 
+
+    if (type === 'stock-card') {
+      console.log("HIiiiii");
+
+      const result = await this.db?.collection("purchase-requests").aggregate(
+        [
+          {
+            $match: {
+              project: new ObjectId(project),
+            },
+          },
+          {
+            $lookup: {
+              from: "suppliers",
+              localField: "supplier",
+              foreignField: "_id",
+              as: "supplier",
+            },
+          },
+          {
+            $unwind: {
+              path: "$supplier",
+              preserveNullAndEmptyArrays: false,
+            },
+          },
+          {
+            $lookup: {
+              from: "projects",
+              localField: "project",
+              foreignField: "_id",
+              as: "project",
+            },
+          },
+          {
+            $unwind: {
+              path: "$project",
+              preserveNullAndEmptyArrays: false,
+            },
+          },
+          {
+            $set: {
+              items: {
+                $map: {
+                  input: "$items",
+                  as: "item",
+                  in: {
+                    $mergeObjects: [
+                      "$$item",
+                      { quantity: { $toInt: "$$item.quantity" } },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+          {
+            $unwind: "$items",
+          },
+          {
+            $match: {
+              date_requested: {
+                $gte: startDate,
+                $lt: endDate,
+              },
+              "items.quantity": { $gte: 10 },
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              requested_by: 1,
+              type : 1,
+              supplier: "$supplier.name",
+              project: "$project.name",
+              address: "$project.address",
+              items: "$items",
+              date_requested: 1,
+            },
+          },
+        ]
+      ).toArray();
+      console.log("RESULTTTT", result);
+      return result;
+    }
+  } else {
+    // Handle other cases (if no year is provided)
+    return this.db?.collection("purchase-requests").aggregate([
+      {
+        $match: {
+       project: new ObjectId(project),
+        }
+      },
+      {
+        $lookup: {
+          from: "projects",
+          localField: "project",
+          foreignField: "_id",
+          as: "project",
+        },
+      },
+      {
+        $unwind: { path: "$project", preserveNullAndEmptyArrays: true },
+      },
+      {
+        $lookup: {
+          from: "suppliers",
+          localField: "supplier",
+          foreignField: "_id",
+          as: "supplier",
+        },
+      },
+      {
+        $unwind: { path: "$supplier", preserveNullAndEmptyArrays: true },
+      },
+      {
+        $project: {
+          items: 1,
+          no: 1,
+          project: "$project.name",
+          address: "$project.address",
+          date_requested: 1,
+          requested_by: 1,
+          type: 1,
+          control_number: "$project.control_number",
+          supplier: "$supplier.name",
+        },
+      },
+    ]).toArray();
+  }
 },
+
 async get_purchase_request_id(id: any) {
 
  return this.db?.collection("purchase-requests").aggregate([
@@ -159,7 +266,7 @@ async get_purchase_request_id(id: any) {
     _id : new ObjectId(id)
   }
     },
-     {
+    {
       $lookup: {
         from: "projects",
         localField: "project",
@@ -168,6 +275,15 @@ async get_purchase_request_id(id: any) {
       },
     },
     { $unwind: { path: "$project", preserveNullAndEmptyArrays: true } }, 
+{
+      $lookup: {
+        from: "suppliers",
+        localField: "supplier",
+        foreignField: "_id",
+        as: "supplier",
+      },
+    },
+    { $unwind: { path: "$supplier", preserveNullAndEmptyArrays: true } }, 
     {
       $project: {
         items: 1,
@@ -176,7 +292,9 @@ async get_purchase_request_id(id: any) {
         address: "$project.address",
         date_requested: 1,
         requested_by: 1,
-        type : 1
+        type : 1,
+        control_number: "$project.control_number",
+        supplier : "$supplier.name"
       },
     }
   ]).toArray();
