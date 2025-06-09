@@ -28,6 +28,8 @@ paths:
     $ref: docs/hbs-samples.yml
   /hris:
     $ref: docs/hris.yml
+  /motorpool:
+    $ref: docs/motorpool.yml
   /new-applicant:
     $ref: docs/new-applicant.yml
   /notification:

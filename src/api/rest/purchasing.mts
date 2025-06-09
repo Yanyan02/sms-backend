@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb'
 import Joi from 'joi'
 import { REST } from 'sfr'
 import { object_id } from '@lib/api-utils.mjs'
+import { log } from 'winston'
 
 const collection = "purchase-requests"
 
@@ -27,7 +28,8 @@ export default REST({
         })
       ),
       requested_by: Joi.string(),
-      date_requested: Joi.date()
+      date_requested: Joi.date(),
+      delivery : Joi.boolean()
     },
     "get-purchase-request": {
    project: Joi.string().allow(""),
@@ -115,11 +117,6 @@ async get_purchase_request(filter: any) {
     query.project = new ObjectId(project);
   }
 
-  // if (type) {
-  //   query.type = type;
-  // }
-
-  console.log("Querryyyy", year);
 
   if (year) {
     const [yearPart, monthPart] = year.split('-'); 
@@ -191,7 +188,7 @@ async get_purchase_request(filter: any) {
                 $gte: startDate,
                 $lt: endDate,
               },
-              "items.quantity": { $gte: 10 },
+              "items.quantity": { $gte: 20 },
             },
           },
           {
@@ -212,53 +209,174 @@ async get_purchase_request(filter: any) {
       return result;
     }
   } else {
-    // Handle other cases (if no year is provided)
-    return this.db?.collection("purchase-requests").aggregate([
-      {
-        $match: {
-       project: new ObjectId(project),
-        }
-      },
-      {
-        $lookup: {
-          from: "projects",
-          localField: "project",
-          foreignField: "_id",
-          as: "project",
-        },
-      },
-      {
-        $unwind: { path: "$project", preserveNullAndEmptyArrays: true },
-      },
-      {
-        $lookup: {
-          from: "suppliers",
-          localField: "supplier",
-          foreignField: "_id",
-          as: "supplier",
-        },
-      },
-      {
-        $unwind: { path: "$supplier", preserveNullAndEmptyArrays: true },
-      },
-      {
-        $project: {
-          items: 1,
-          no: 1,
-          project: "$project.name",
-          address: "$project.address",
-          date_requested: 1,
-          requested_by: 1,
-          type: 1,
-          control_number: "$project.control_number",
-          supplier: "$supplier.name",
-        },
-      },
-    ]).toArray();
+   if(type === 'purchase-request'){
+    console.log("REQUESTTTTTTTTTTTTTTTTTTT");
+    
+      const result =  this.db?.collection("purchase-requests").aggregate([
+                      {
+                    $match: {
+                    project: new ObjectId(project),
+                    }
+                    },
+                    {
+                      $lookup: {
+                        from: "suppliers",
+                        localField: "supplier",
+                        foreignField: "_id",
+                        as: "supplier"
+                      }
+                    },
+                    { $unwind: "$supplier" },
+                    {
+                      $lookup: {
+                        from: "projects",
+                        localField: "project",
+                        foreignField: "_id",
+                        as: "project"
+                      }
+                    },
+                    { $unwind: "$project" },
+                    {
+                      $group: {
+                        _id: {
+                          date_requested: "$date_requested"
+                        },
+                        items: { $push: "$items" },
+                        supplier: { $first: "$supplier.name" },
+                        project: { $first: "$project.name" },
+                        address: { $first: "$project.address" },
+                        control_number: { $first: "$project.control_number" }, 
+                        requested_by: { $first: "$requested_by" },
+                        type: { $first: "$type" },
+                        delivery: { $first: "$delivery" }
+                      }
+                    },
+                    {
+                      $project: {
+                        _id: 0,
+                        date_requested: "$_id.date_requested",
+                        supplier: 1,
+                        project: 1,
+                        address: 1,
+                        control_number: 1,
+                        requested_by: 1,
+                        type: 1,
+                        delivery: 1,
+                        items: {
+                          $reduce: {
+                            input: "$items",
+                            initialValue: [],
+                            in: { $concatArrays: ["$$value", "$$this"] }
+                          }
+                        }
+                      }
+                    }
+                    // {
+                    //   $lookup: {
+                    //     from: "suppliers",
+                    //     localField: "supplier",
+                    //     foreignField: "_id",
+                    //     as: "supplier"
+                    //   }
+                    // },
+                    // { $unwind: "$supplier" },
+                    // {
+                    //   $lookup: {
+                    //     from: "projects",
+                    //     localField: "project",
+                    //     foreignField: "_id",
+                    //     as: "project"
+                    //   }
+                    // },
+                    // { $unwind: "$project" },
+                  
+                    // {
+                    //   $group: {
+                    //     _id: {
+                    //       date_requested: "$date_requested"
+                    //     },
+                    //     items: { $push: "$items" }, 
+                    //     supplier: { $first: "$supplier.name" },
+                    //     project: { $first: "$project.name" },
+                    //     address: { $first: "$project.address" },
+                    //     requested_by: { $first: "$requested_by" },
+                    //     type: { $first: "$type" },
+                    //     delivery: { $first: "$delivery" }
+                    //   }
+                    // },
+                    // {
+                    //   $project: {
+                    //     _id: 0,
+                    //     date_requested: "$_id.date_requested",
+                    //     supplier: 1,
+                    //     project: 1,
+                    //     address: 1,
+                    //     requested_by: 1,
+                    //     type: 1,
+                    //     delivery: 1,
+                    
+                    //     items: {
+                    //       $reduce: {
+                    //         input: "$items",
+                    //         initialValue: [],
+                    //         in: { $concatArrays: ["$$value", "$$this"] }
+                    //       }
+                    //     }
+                    //   }
+                    // }
+                    ]).toArray()
+                    return result
+                  } else {
+                    console.log("NOTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTtttt");
+                   const result =  this.db?.collection("purchase-requests").aggregate([
+                    {
+                      $match: {
+                     project: new ObjectId(project),
+                      }
+                    },
+                    {
+                      $lookup: {
+                        from: "projects",
+                        localField: "project",
+                        foreignField: "_id",
+                        as: "project",
+                      },
+                    },
+                    {
+                      $unwind: { path: "$project", preserveNullAndEmptyArrays: true },
+                    },
+                    {
+                      $lookup: {
+                        from: "suppliers",
+                        localField: "supplier",
+                        foreignField: "_id",
+                        as: "supplier",
+                      },
+                    },
+                    {
+                      $unwind: { path: "$supplier", preserveNullAndEmptyArrays: true },
+                    },
+                    {
+                      $project: {
+                        items: 1,
+                        no: 1,
+                        project: "$project.name",
+                        address: "$project.address",
+                        date_requested: 1,
+                        requested_by: 1,
+                        type: 1,
+                        control_number: "$project.control_number",
+                        supplier: "$supplier.name",
+                      },
+                    },
+                  ]).toArray();
+                  return result
+                  }
   }
 },
 
 async get_purchase_request_id(id: any) {
+console.log("IDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD");
 
  return this.db?.collection("purchase-requests").aggregate([
     {
