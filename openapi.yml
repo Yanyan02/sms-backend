@@ -74,6 +74,8 @@ paths:
     $ref: docs/admin/subject-authority.yml
   /supplier:
     $ref: docs/supplier.yml
+  /trip-ticket:
+    $ref: docs/trip-ticket.yml
   /user-uploads:
     $ref: docs/user-uploads.yml
   /user:
