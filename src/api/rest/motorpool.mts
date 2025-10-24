@@ -31,6 +31,12 @@ export default REST({
     },
     "get-vehicle": {
     },
+    "get-checklist": {
+    from: Joi.string().allow(""),
+    to: Joi.string().allow(""),
+    project: Joi.string().allow(""),
+     vehicle: Joi.string().allow(""),
+    },
    
   },
   handlers: {
@@ -45,6 +51,9 @@ export default REST({
     "GET": {
       "get-vehicle"(req, res) {
         this.get_vehicle().then((data) => res.json({ data })).catch((error) => res.status(400).json({ error }))
+      },
+      "get-checklist"(req, res) {
+        this.get_checklist(req.query).then((data) => res.json({ data })).catch((error) => res.status(400).json({ error }))
       },
     },
     "PUT": {
@@ -89,6 +98,89 @@ return this.db?.collection("vehicles").aggregate([
 ]).toArray();
 
 },
+async get_checklist(filter) {
+  console.log("NGEEEEEEEEEEEE", filter)
+
+  const [fromYear, fromMonth] = filter.from.split('-').map(Number)
+  const [toYear, toMonth] = filter.to.split('-').map(Number)
+
+  const start = new Date(Date.UTC(fromYear, fromMonth - 1, 1)) 
+  const end = new Date(Date.UTC(toYear, toMonth, 0, 23, 59, 59, 999)) 
+
+  const matchStage = {
+    $match: {
+      date: {
+        $gte: start,
+        $lte: end
+      },
+      ...(filter.project && { project: new ObjectId(filter.project) })
+    }
+  }
+
+  return this.db?.collection("trip-tickets").aggregate([
+    matchStage,
+    {
+      $lookup: {
+        from: "vehicles",
+        localField: "vehicle_id",
+        foreignField: "_id",
+        as: "vehicle"
+      }
+    },
+    {
+      $unwind: "$vehicle"
+    },
+    {
+      $lookup: {
+        from: "projects",
+        localField: "project",
+        foreignField: "_id",
+        as: "project"
+      }
+    },
+    {
+      $unwind: "$project"
+    },
+     {
+    $addFields: {
+      year: { $year: "$ticket_date" },
+      month: { $month: "$ticket_date" }
+    }
+  },
+  {
+    $group: {
+      _id: {
+        vehicle_id: "$vehicle_id",
+        year: "$year",
+        month: "$month"
+      },
+      vehicle: { $first: "$vehicle.name" },
+      vehicle_id: { $first: "$vehicle.id" },
+      project: { $first: "$project.name" },
+      year: { $first: "$year" },
+      month: { $first: "$month" },
+      count: { $sum: 1 },
+      records: { $push: "$$ROOT.checklist" }
+    }
+  },
+  {
+    $sort: {
+      "year": 1,
+      "month": 1
+    }
+  }
+    // {
+    //   $group: {
+    //     _id: "$vehicle_id",
+    //     vehicle: { $first: "$vehicle.name" },
+    //     id: { $first: "$vehicle.id" },
+    //     project: { $first: "$project.name" },
+    //     count: { $sum: 1 },
+    //     records: { $push: "$$ROOT.checklist" }
+    //   }
+    // }
+  ]).toArray()
+},
 async update_vehicle(id, title) {
       const result = await this.db?.collection(collection).updateOne(
         { _id: new ObjectId(id) },
@@ -100,8 +192,6 @@ async update_vehicle(id, title) {
       }
       return result;
     },
-
-
 
   }
 })
