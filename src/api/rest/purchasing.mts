@@ -71,9 +71,7 @@ export default REST({
   },
   controllers: {
    async create_purchase_request(data) {
- 
 
-  // Fetch project details
   const project = await this.db?.collection("projects").findOne({ _id: new ObjectId(data.project) });
 
   if (!project) {
@@ -107,277 +105,201 @@ export default REST({
 
   return { message: "Successfully created purchase request", prNumber };
 },
-async get_purchase_request(filter: any) {  
-  console.log("FIlerrrrrrrrrr", filter);
-
+async get_purchase_request(filter: any) {
   const { project, type, year } = filter;
-  const query: any = {};
 
+  const match: any = {};
   if (project) {
-    query.project = new ObjectId(project);
+    match.project = new ObjectId(project);
   }
 
-
   if (year) {
-    const [yearPart, monthPart] = year.split('-'); 
+    const [yearPart, monthPart] = year.split("-");
 
     const startDate = new Date(`${yearPart}-${monthPart}-01T00:00:00Z`);
     const endDate = new Date(startDate);
-    endDate.setMonth(endDate.getMonth() + 1); 
+    endDate.setMonth(endDate.getMonth() + 1);
 
-    if (type === 'stock-card') {
-      console.log("HIiiiii");
+    match.date_requested = {
+      $gte: startDate,
+      $lt: endDate,
+    };
+  }
 
-      const result = await this.db?.collection("purchase-requests").aggregate(
-        [
-          {
-            $match: {
-              project: new ObjectId(project),
-            },
+  if (!type) {
+    return await this.db?.collection("purchase-requests")
+      .aggregate([
+        { $match: match },
+
+        {
+          $lookup: {
+            from: "projects",
+            localField: "project",
+            foreignField: "_id",
+            as: "project",
           },
-          {
-            $lookup: {
-              from: "suppliers",
-              localField: "supplier",
-              foreignField: "_id",
-              as: "supplier",
-            },
+        },
+        { $unwind: { path: "$project", preserveNullAndEmptyArrays: true } },
+
+        {
+          $lookup: {
+            from: "suppliers",
+            localField: "supplier",
+            foreignField: "_id",
+            as: "supplier",
           },
-          {
-            $unwind: {
-              path: "$supplier",
-              preserveNullAndEmptyArrays: false,
-            },
+        },
+        { $unwind: { path: "$supplier", preserveNullAndEmptyArrays: true } },
+
+        {
+          $project: {
+            items: 1,
+            no: 1,
+            project: "$project.name",
+            address: "$project.address",
+            control_number: "$project.control_number",
+            supplier: "$supplier.name",
+            date_requested: 1,
+            requested_by: 1,
+            type: 1,
           },
-          {
-            $lookup: {
-              from: "projects",
-              localField: "project",
-              foreignField: "_id",
-              as: "project",
-            },
+        },
+      ])
+      .toArray();
+  }
+  if (type === "stock-card" && year) {
+    return await this.db?.collection("purchase-requests")
+      .aggregate([
+        { $match: match },
+
+        {
+          $lookup: {
+            from: "suppliers",
+            localField: "supplier",
+            foreignField: "_id",
+            as: "supplier",
           },
-          {
-            $unwind: {
-              path: "$project",
-              preserveNullAndEmptyArrays: false,
-            },
+        },
+        { $unwind: "$supplier" },
+
+        {
+          $lookup: {
+            from: "projects",
+            localField: "project",
+            foreignField: "_id",
+            as: "project",
           },
-          {
-            $set: {
-              items: {
-                $map: {
-                  input: "$items",
-                  as: "item",
-                  in: {
-                    $mergeObjects: [
-                      "$$item",
-                      { quantity: { $toInt: "$$item.quantity" } },
-                    ],
-                  },
+        },
+        { $unwind: "$project" },
+        {
+          $set: {
+            items: {
+              $map: {
+                input: "$items",
+                as: "item",
+                in: {
+                  $mergeObjects: [
+                    "$$item",
+                    { quantity: { $toInt: "$$item.quantity" } },
+                  ],
                 },
               },
             },
           },
-          {
-            $unwind: "$items",
+        },
+
+        { $unwind: "$items" },
+
+        {
+          $match: {
+            ...match,
+            "items.quantity": { $gte: 20 },
           },
-          {
-            $match: {
-              date_requested: {
-                $gte: startDate,
-                $lt: endDate,
-              },
-              "items.quantity": { $gte: 20 },
-            },
+        },
+
+        {
+          $project: {
+            _id: 0,
+            requested_by: 1,
+            type: 1,
+            supplier: "$supplier.name",
+            project: "$project.name",
+            address: "$project.address",
+            items: 1,
+            date_requested: 1,
           },
-          {
-            $project: {
-              _id: 0,
-              requested_by: 1,
-              type : 1,
-              supplier: "$supplier.name",
-              project: "$project.name",
-              address: "$project.address",
-              items: "$items",
-              date_requested: 1,
-            },
-          },
-        ]
-      ).toArray();
-      console.log("RESULTTTT", result);
-      return result;
-    }
-  } else {
-   if(type === 'purchase-request'){
-    console.log("REQUESTTTTTTTTTTTTTTTTTTT");
-    
-      const result =  this.db?.collection("purchase-requests").aggregate([
-                      {
-                    $match: {
-                    project: new ObjectId(project),
-                    }
-                    },
-                    {
-                      $lookup: {
-                        from: "suppliers",
-                        localField: "supplier",
-                        foreignField: "_id",
-                        as: "supplier"
-                      }
-                    },
-                    { $unwind: "$supplier" },
-                    {
-                      $lookup: {
-                        from: "projects",
-                        localField: "project",
-                        foreignField: "_id",
-                        as: "project"
-                      }
-                    },
-                    { $unwind: "$project" },
-                    {
-                      $group: {
-                        _id: {
-                          date_requested: "$date_requested"
-                        },
-                        items: { $push: "$items" },
-                        supplier: { $first: "$supplier.name" },
-                        project: { $first: "$project.name" },
-                        address: { $first: "$project.address" },
-                        control_number: { $first: "$project.control_number" }, 
-                        requested_by: { $first: "$requested_by" },
-                        type: { $first: "$type" },
-                        delivery: { $first: "$delivery" }
-                      }
-                    },
-                    {
-                      $project: {
-                        _id: 0,
-                        date_requested: "$_id.date_requested",
-                        supplier: 1,
-                        project: 1,
-                        address: 1,
-                        control_number: 1,
-                        requested_by: 1,
-                        type: 1,
-                        delivery: 1,
-                        items: {
-                          $reduce: {
-                            input: "$items",
-                            initialValue: [],
-                            in: { $concatArrays: ["$$value", "$$this"] }
-                          }
-                        }
-                      }
-                    }
-                    // {
-                    //   $lookup: {
-                    //     from: "suppliers",
-                    //     localField: "supplier",
-                    //     foreignField: "_id",
-                    //     as: "supplier"
-                    //   }
-                    // },
-                    // { $unwind: "$supplier" },
-                    // {
-                    //   $lookup: {
-                    //     from: "projects",
-                    //     localField: "project",
-                    //     foreignField: "_id",
-                    //     as: "project"
-                    //   }
-                    // },
-                    // { $unwind: "$project" },
-                  
-                    // {
-                    //   $group: {
-                    //     _id: {
-                    //       date_requested: "$date_requested"
-                    //     },
-                    //     items: { $push: "$items" }, 
-                    //     supplier: { $first: "$supplier.name" },
-                    //     project: { $first: "$project.name" },
-                    //     address: { $first: "$project.address" },
-                    //     requested_by: { $first: "$requested_by" },
-                    //     type: { $first: "$type" },
-                    //     delivery: { $first: "$delivery" }
-                    //   }
-                    // },
-                    // {
-                    //   $project: {
-                    //     _id: 0,
-                    //     date_requested: "$_id.date_requested",
-                    //     supplier: 1,
-                    //     project: 1,
-                    //     address: 1,
-                    //     requested_by: 1,
-                    //     type: 1,
-                    //     delivery: 1,
-                    
-                    //     items: {
-                    //       $reduce: {
-                    //         input: "$items",
-                    //         initialValue: [],
-                    //         in: { $concatArrays: ["$$value", "$$this"] }
-                    //       }
-                    //     }
-                    //   }
-                    // }
-                    ]).toArray()
-                    return result
-                  } else {
-                    console.log("NOTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTtttt");
-                   const result =  this.db?.collection("purchase-requests").aggregate([
-                    {
-                      $match: {
-                     project: new ObjectId(project),
-                      }
-                    },
-                    {
-                      $lookup: {
-                        from: "projects",
-                        localField: "project",
-                        foreignField: "_id",
-                        as: "project",
-                      },
-                    },
-                    {
-                      $unwind: { path: "$project", preserveNullAndEmptyArrays: true },
-                    },
-                    {
-                      $lookup: {
-                        from: "suppliers",
-                        localField: "supplier",
-                        foreignField: "_id",
-                        as: "supplier",
-                      },
-                    },
-                    {
-                      $unwind: { path: "$supplier", preserveNullAndEmptyArrays: true },
-                    },
-                    {
-                      $project: {
-                        items: 1,
-                        no: 1,
-                        project: "$project.name",
-                        address: "$project.address",
-                        date_requested: 1,
-                        requested_by: 1,
-                        type: 1,
-                        control_number: "$project.control_number",
-                        supplier: "$supplier.name",
-                      },
-                    },
-                  ]).toArray();
-                  return result
-                  }
+        },
+      ])
+      .toArray();
   }
+  if (type === "purchase-request") {
+    return await this.db?.collection("purchase-requests")
+      .aggregate([
+        { $match: match },
+
+        {
+          $lookup: {
+            from: "suppliers",
+            localField: "supplier",
+            foreignField: "_id",
+            as: "supplier",
+          },
+        },
+        { $unwind: "$supplier" },
+
+        {
+          $lookup: {
+            from: "projects",
+            localField: "project",
+            foreignField: "_id",
+            as: "project",
+          },
+        },
+        { $unwind: "$project" },
+
+        {
+          $group: {
+            _id: { date_requested: "$date_requested" },
+            items: { $push: "$items" },
+            supplier: { $first: "$supplier.name" },
+            project: { $first: "$project.name" },
+            address: { $first: "$project.address" },
+            control_number: { $first: "$project.control_number" },
+            requested_by: { $first: "$requested_by" },
+            type: { $first: "$type" },
+            delivery: { $first: "$delivery" },
+          },
+        },
+
+        {
+          $project: {
+            _id: 0,
+            date_requested: "$_id.date_requested",
+            supplier: 1,
+            project: 1,
+            address: 1,
+            control_number: 1,
+            requested_by: 1,
+            type: 1,
+            delivery: 1,
+
+            items: {
+              $reduce: {
+                input: "$items",
+                initialValue: [],
+                in: { $concatArrays: ["$$value", "$$this"] },
+              },
+            },
+          },
+        },
+      ])
+      .toArray();
+  }
+
+  return [];
 },
 
 async get_purchase_request_id(id: any) {
-console.log("IDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD");
-
  return this.db?.collection("purchase-requests").aggregate([
     {
   $match: {
@@ -418,10 +340,6 @@ console.log("IDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD");
   ]).toArray();
 
 },
-
-
-
-
 
     async update_purchase_request(id, title) {
       const result = await this.db?.collection(collection).updateOne(
